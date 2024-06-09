@@ -61,6 +61,7 @@ class FrogPilotPlanner:
     self.lead_departing = False
     self.override_slc = False
     self.slower_lead = False
+    self.taking_curve_quickly = False
 
     self.acceleration_jerk = 0
     self.frame = 0
@@ -169,6 +170,9 @@ class FrogPilotPlanner:
 
     if frogpilot_toggles.conditional_experimental_mode or frogpilot_toggles.green_light_alert:
       self.cem.update(carState, controlsState.enabled, frogpilotNavigation, lead_distance, self.lead_one, modelData, self.road_curvature, self.slower_lead, v_ego, v_lead, frogpilot_toggles)
+
+    if frogpilot_toggles.random_events:
+      self.taking_curve_quickly = v_ego > self.v_cruise - CRUISING_SPEED > CITY_SPEED_LIMIT and carState.steeringAngleDeg > 45
 
     self.frame += DT_MDL
 
@@ -283,6 +287,8 @@ class FrogPilotPlanner:
     frogpilotPlan.slcSpeedLimit = self.slc_target
     frogpilotPlan.slcSpeedLimitOffset = SpeedLimitController.offset
     frogpilotPlan.unconfirmedSlcSpeedLimit = SpeedLimitController.desired_speed_limit
+
+    frogpilotPlan.takingCurveQuickly = bool(self.taking_curve_quickly)
 
     frogpilotPlan.tFollow = float(self.t_follow)
 
