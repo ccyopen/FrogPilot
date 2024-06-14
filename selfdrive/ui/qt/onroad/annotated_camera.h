@@ -115,6 +115,7 @@ private:
   bool blindSpotRight;
   bool compass;
   bool experimentalMode;
+  bool hasLead;
   bool hideMapIcon;
   bool hideMaxSpeed;
   bool hideSpeed;
@@ -132,6 +133,7 @@ private:
   bool trafficModeActive;
   bool turnSignalLeft;
   bool turnSignalRight;
+  bool useSI;
   bool useViennaSLCSign;
   bool vtscControllingCurve;
 

@@ -141,9 +141,9 @@ typedef struct UIScene {
   bool experimental_mode;
   bool experimental_mode_via_screen;
   bool fahrenheit;
-  bool fps_counter;
   bool full_map;
   bool has_auto_tune;
+  bool has_lead;
   bool hide_alerts;
   bool hide_lead_marker;
   bool hide_map_icon;
@@ -177,6 +177,7 @@ typedef struct UIScene {
   bool show_aol_status_bar;
   bool show_blind_spot;
   bool show_cem_status_bar;
+  bool show_fps;
   bool show_jerk;
   bool show_signal;
   bool show_slc_offset;

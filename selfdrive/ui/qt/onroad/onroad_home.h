@@ -25,7 +25,29 @@ private:
   QHBoxLayout* split;
 
   // FrogPilot variables
-  int steer;
+  bool blindSpotLeft;
+  bool blindSpotRight;
+  bool hasLead;
+  bool liveValid;
+  bool showBlindspot;
+  bool showFPS;
+  bool showJerk;
+  bool showSignal;
+  bool showSteering;
+  bool showTuning;
+  bool turnSignalLeft;
+  bool turnSignalRight;
+
+  float accelerationJerk;
+  float accelerationJerkDifference;
+  float fps;
+  float friction;
+  float latAccel;
+  float speedJerk;
+  float speedJerkDifference;
+  float steer;
+
+  int steeringAngleDeg;
 
   QPoint timeoutPoint = QPoint(420, 69);
 

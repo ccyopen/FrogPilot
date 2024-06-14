@@ -48,7 +48,7 @@ void update_leads(UIState *s, const cereal::ModelDataV2::Reader &model_data) {
   const cereal::XYZTData::Reader &line = model_data.getPosition();
   for (int i = 0; i < model_data.getLeadsV3().size() && i < 2; ++i) {
     const auto &lead = model_data.getLeadsV3()[i];
-    if (lead.getProb() > s->scene.lead_detection_threshold) {
+    if (s->scene.has_lead) {
       float d_rel = lead.getX()[0];
       float y_rel = lead.getY()[0];
       float z = line.getZ()[get_path_length_idx(line, d_rel)];
@@ -120,7 +120,8 @@ void update_model(UIState *s,
   auto lead_count = model.getLeadsV3().size();
   if (lead_count > 0) {
     auto lead_one = model.getLeadsV3()[0];
-    if (lead_one.getProb() > scene.lead_detection_threshold) {
+    scene.has_lead = lead_one.getProb() > scene.lead_detection_threshold;
+    if (scene.has_lead) {
       const float lead_d = lead_one.getX()[0] * 2.;
       max_distance = std::clamp((float)(lead_d - fmin(lead_d * 0.35, 10.)), 0.0f, max_distance);
     }
@@ -320,6 +321,14 @@ void ui_update_frogpilot_params(UIState *s) {
   Params params = Params();
   UIScene &scene = s->scene;
 
+  auto carParams = params.get("CarParamsPersistent");
+  if (!carParams.empty() && !scene.started) {
+    AlignedBuffer aligned_buf;
+    capnp::FlatArrayMessageReader cmsg(aligned_buf.align(carParams.data(), carParams.size()));
+    cereal::CarParams::Reader CP = cmsg.getRoot<cereal::CarParams>();
+    scene.longitudinal_control = CP.getOpenpilotLongitudinalControl() && !params.getBool("DisableOpenpilotLongitudinal");
+  }
+
   bool always_on_lateral = params.getBool("AlwaysOnLateral");
   scene.show_aol_status_bar = always_on_lateral && !params.getBool("HideAOLStatusBar");
 
@@ -352,9 +361,9 @@ void ui_update_frogpilot_params(UIState *s) {
   bool developer_ui = params.getBool("DeveloperUI");
   bool border_metrics = developer_ui && params.getBool("BorderMetrics");
   scene.show_blind_spot = border_metrics && params.getBool("BlindSpotMetrics");
+  scene.show_fps = developer_ui && params.getBool("FPSCounter");
   scene.show_signal = border_metrics && params.getBool("SignalMetrics");
   scene.show_steering = border_metrics && params.getBool("ShowSteering");
-  scene.fps_counter = developer_ui && params.getBool("FPSCounter");
   scene.lead_info = scene.longitudinal_control && developer_ui && params.getBool("LongitudinalMetrics");
   scene.numerical_temp = developer_ui && params.getBool("NumericalTemp");
   scene.fahrenheit = scene.numerical_temp && params.getBool("Fahrenheit");
@@ -454,7 +463,6 @@ void UIState::updateStatus() {
     if (scene.started) {
       status = STATUS_DISENGAGED;
       scene.started_frame = sm->frame;
-      updateFrogPilotToggles();
     }
     started_prev = scene.started;
     scene.world_objects_visible = false;
@@ -486,6 +494,7 @@ UIState::UIState(QObject *parent) : QObject(parent) {
   QObject::connect(timer, &QTimer::timeout, this, &UIState::update);
   timer->start(1000 / UI_FREQ);
 
+  // FrogPilot variables
   wifi = new WifiManager(this);
 
   ui_update_frogpilot_params(this);

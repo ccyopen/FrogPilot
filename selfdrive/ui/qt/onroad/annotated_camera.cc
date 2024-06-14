@@ -655,7 +655,7 @@ void AnnotatedCameraWidget::paintEvent(QPaintEvent *event) {
       for (int i = 0; i < model.getLeadsV3().size() && i < 2; i++) {
         const auto &lead = model.getLeadsV3()[i];
         auto lead_drel = lead.getX()[0];
-        if (lead.getProb() > s->scene.lead_detection_threshold && (prev_drel < 0 || std::abs(lead_drel - prev_drel) > 3.0)) {
+        if (hasLead && (prev_drel < 0 || std::abs(lead_drel - prev_drel) > 3.0)) {
           drawLead(painter, lead, s->scene.lead_vertices[i], v_ego);
         }
         prev_drel = lead_drel;
@@ -774,14 +774,14 @@ void AnnotatedCameraWidget::initializeFrogPilotWidgets() {
 }
 
 void AnnotatedCameraWidget::updateFrogPilotWidgets(const UIScene &scene) {
-  if (is_metric || scene.use_si) {
+  if (is_metric || useSI) {
     accelerationUnit = tr(" m/s²");
     leadDistanceUnit = tr(mapOpen ? "m" : "meters");
-    leadSpeedUnit = scene.use_si ? tr("m/s") : tr("kph");
+    leadSpeedUnit = useSI ? tr("m/s") : tr("kph");
 
     accelerationConversion = 1.0f;
     distanceConversion = 1.0f;
-    speedConversion = scene.use_si ? 1.0f : MS_TO_KPH;
+    speedConversion = useSI ? 1.0f : MS_TO_KPH;
   } else {
     accelerationUnit = tr(" ft/s²");
     leadDistanceUnit = tr(mapOpen ? "ft" : "feet");
@@ -830,6 +830,8 @@ void AnnotatedCameraWidget::updateFrogPilotWidgets(const UIScene &scene) {
 
   experimentalMode = scene.experimental_mode;
 
+  hasLead = scene.has_lead;
+
   hideMapIcon = scene.hide_map_icon;
   hideMaxSpeed = scene.hide_max_speed;
   hideSpeed = scene.hide_speed;
@@ -838,7 +840,7 @@ void AnnotatedCameraWidget::updateFrogPilotWidgets(const UIScene &scene) {
   laneWidthLeft = scene.lane_width_left;
   laneWidthRight = scene.lane_width_right;
 
-  leadInfo = scene.lead_info;
+  leadInfo = scene.lead_info && hasLead;
   obstacleDistance = scene.obstacle_distance;
   obstacleDistanceStock = scene.obstacle_distance_stock;
 
@@ -872,6 +874,8 @@ void AnnotatedCameraWidget::updateFrogPilotWidgets(const UIScene &scene) {
   speedLimitChanged = speedLimitController && scene.speed_limit_changed;
   unconfirmedSpeedLimit = speedLimitController ? scene.unconfirmed_speed_limit : 0;
   useViennaSLCSign = scene.use_vienna_slc_sign;
+
+  useSI = scene.use_si;
 
   trafficModeActive = scene.traffic_mode_active;
 
@@ -968,14 +972,19 @@ void Compass::initializeStaticElements() {
   p.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   p.setPen(QPen(Qt::white, 2));
   p.setBrush(QColor(0, 0, 0, 100));
-  p.drawEllipse(x - circleOffset, y - circleOffset, compassSize, compassSize);
+
+  const int xOffset = x - circleOffset;
+  const int yOffset = y - circleOffset;
+
+  p.drawEllipse(xOffset, yOffset, compassSize, compassSize);
   p.setBrush(Qt::NoBrush);
-  p.drawEllipse(x - (innerCompass + 5), y - (innerCompass + 5), (innerCompass + 5) * 2, (innerCompass + 5) * 2);
+  const int innerOffset = innerCompass + 5;
+  p.drawEllipse(x - innerOffset, y - innerOffset, innerOffset * 2, innerOffset * 2);
   p.drawEllipse(x - degreeLabelOffset, y - degreeLabelOffset, degreeLabelOffset * 2, degreeLabelOffset * 2);
 
   QPainterPath outerCircle, innerCircle;
   outerCircle.addEllipse(x - degreeLabelOffset, y - degreeLabelOffset, degreeLabelOffset * 2, degreeLabelOffset * 2);
-  innerCircle.addEllipse(x - circleOffset, y - circleOffset, compassSize, compassSize);
+  innerCircle.addEllipse(xOffset, yOffset, compassSize, compassSize);
   p.fillPath(outerCircle.subtracted(innerCircle), Qt::black);
 }
 
@@ -993,10 +1002,10 @@ void Compass::paintEvent(QPaintEvent *event) {
   p.translate(x, y);
   p.rotate(bearingDeg);
   p.drawPixmap(-compassInnerImg.width() / 2, -compassInnerImg.height() / 2, compassInnerImg);
-  p.rotate(-bearingDeg);
-  p.translate(-x, -y);
+  p.resetTransform();
 
   QFont font = InterFont(10, QFont::Normal);
+  const int halfCompassSize = compassSize / 2;
   for (int i = 0; i < 360; i += 15) {
     bool isBold = abs(i - bearingDeg) <= 7;
     font.setWeight(isBold ? QFont::Bold : QFont::Normal);
@@ -1006,8 +1015,9 @@ void Compass::paintEvent(QPaintEvent *event) {
     p.save();
     p.translate(x, y);
     p.rotate(i);
-    p.drawLine(0, -(compassSize / 2 - (i % 90 == 0 ? 12 : 8)), 0, -(compassSize / 2));
-    p.translate(0, -(compassSize / 2 + 12));
+    int lineLength = i % 90 == 0 ? 12 : 8;
+    p.drawLine(0, -(halfCompassSize - lineLength), 0, -halfCompassSize);
+    p.translate(0, -(halfCompassSize + 12));
     p.rotate(-i);
     p.drawText(QRect(-20, -10, 40, 20), Qt::AlignCenter, QString::number(i));
     p.restore();
@@ -1216,7 +1226,7 @@ void AnnotatedCameraWidget::drawStatusBar(QPainter &p) {
   p.setOpacity(1.0);
   p.drawRoundedRect(statusBarRect, 30, 30);
 
-  const std::map<int, QString> conditionalStatusMap = {
+  static const std::map<int, QString> conditionalStatusMap = {
     {0, tr("Conditional Experimental Mode ready")},
     {1, tr("Conditional Experimental overridden")},
     {2, tr("Experimental Mode manually activated")},
@@ -1227,7 +1237,7 @@ void AnnotatedCameraWidget::drawStatusBar(QPainter &p) {
     {7, tr("Experimental Mode activated for") + (mapOpen ? tr(" intersection") : tr(" upcoming intersection"))},
     {8, tr("Experimental Mode activated for") + (mapOpen ? tr(" turn") : tr(" upcoming turn"))},
     {9, tr("Experimental Mode activated due to") + (mapOpen ? tr(" SLC") : tr(" no speed limit set"))},
-    {10, tr("Experimental Mode activated due to") + (mapOpen ? tr(" speed") : tr(" speed being less than ") + QString::number(conditionalSpeedLead ) + (is_metric ? tr(" kph") : tr(" mph")))},
+    {10, tr("Experimental Mode activated due to") + (mapOpen ? tr(" speed") : tr(" speed being less than ") + QString::number(conditionalSpeedLead) + (is_metric ? tr(" kph") : tr(" mph")))},
     {11, tr("Experimental Mode activated due to") + (mapOpen ? tr(" speed") : tr(" speed being less than ") + QString::number(conditionalSpeed) + (is_metric ? tr(" kph") : tr(" mph")))},
     {12, tr("Experimental Mode activated for stopped lead")},
     {13, tr("Experimental Mode activated for slower lead")},
@@ -1242,16 +1252,19 @@ void AnnotatedCameraWidget::drawStatusBar(QPainter &p) {
     newStatus = conditionalStatusMap.at(status != STATUS_DISENGAGED ? conditionalStatus : 0);
   }
 
-  QString suffix;
   if (!alwaysOnLateralActive && !mapOpen && status != STATUS_DISENGAGED && !newStatus.isEmpty()) {
-    if (conditionalStatus == 1 || conditionalStatus == 2) {
-      suffix = tr(". Long press the \"distance\" button to revert");
-    } else if (conditionalStatus == 3 || conditionalStatus == 4) {
-      suffix = tr(". Double press the \"LKAS\" button to revert");
-    } else if (conditionalStatus == 5 || conditionalStatus == 6) {
-      suffix = tr(". Double tap the screen to revert");
+    static const std::map<int, QString> suffixMap = {
+      {1, tr(". Long press the \"distance\" button to revert")},
+      {2, tr(". Long press the \"distance\" button to revert")},
+      {3, tr(". Double press the \"LKAS\" button to revert")},
+      {4, tr(". Double press the \"LKAS\" button to revert")},
+      {5, tr(". Double tap the screen to revert")},
+      {6, tr(". Double tap the screen to revert")},
+    };
+    auto suffixIter = suffixMap.find(conditionalStatus);
+    if (suffixIter != suffixMap.end()) {
+      newStatus += suffixIter->second;
     }
-    newStatus += suffix;
   }
 
   QString roadName = roadNameUI ? QString::fromStdString(paramsMemory.get("RoadName")) : QString();
@@ -1304,8 +1317,7 @@ void AnnotatedCameraWidget::drawTurnSignals(QPainter &p) {
   if (animationFrameIndex < signalImgVector.size()) {
     auto drawSignal = [&](bool signalActivated, int xPosition, bool flip, bool blindspot) {
       if (signalActivated) {
-        int uniqueImages = signalImgVector.size() / 4;
-        int index = (blindspot ? 2 * uniqueImages : 2 * animationFrameIndex % totalFrames) + (flip ? 1 : 0);
+        int index = (blindspot ? totalFrames : 2 * animationFrameIndex % totalFrames) + (flip ? 1 : 0);
         QPixmap &signal = signalImgVector[index];
         p.drawPixmap(xPosition, baseYPosition, signalWidth, signalHeight, signal);
       }

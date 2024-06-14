@@ -50,6 +50,7 @@ OnroadWindow::OnroadWindow(QWidget *parent) : QWidget(parent) {
   QObject::connect(uiState(), &UIState::offroadTransition, this, &OnroadWindow::offroadTransition);
   QObject::connect(uiState(), &UIState::primeChanged, this, &OnroadWindow::primeChanged);
 
+  // FrogPilot variables
   QObject::connect(&clickTimer, &QTimer::timeout, this, [this]() {
     clickTimer.stop();
     QMouseEvent *event = new QMouseEvent(QEvent::MouseButtonPress, timeoutPoint, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
@@ -61,6 +62,8 @@ void OnroadWindow::updateState(const UIState &s) {
   if (!s.scene.started) {
     return;
   }
+
+  bool shouldUpdate = false;
 
   if (s.scene.map_on_left || s.scene.full_map) {
     split->setDirection(QBoxLayout::LeftToRight);
@@ -75,6 +78,39 @@ void OnroadWindow::updateState(const UIState &s) {
   if (bg != bgColor) {
     // repaint border
     bg = bgColor;
+    shouldUpdate = true;
+  }
+
+  // FrogPilot variables
+  const UIScene &scene = s.scene;
+
+  accelerationJerk = scene.acceleration_jerk;
+  accelerationJerkDifference = scene.acceleration_jerk_difference;
+  blindSpotLeft = scene.blind_spot_left;
+  blindSpotRight = scene.blind_spot_right;
+  fps = scene.fps;
+  friction = scene.friction;
+  hasLead = scene.has_lead;
+  latAccel = scene.lat_accel;
+  liveValid = scene.live_valid;
+  showBlindspot = scene.show_blind_spot && (blindSpotLeft || blindSpotRight);
+  showFPS = scene.show_fps;
+  showJerk = scene.show_jerk;
+  showSignal = scene.show_signal && (turnSignalLeft || turnSignalRight);
+  showSteering = scene.show_steering;
+  showTuning = scene.show_tuning;
+  speedJerk = scene.speed_jerk;
+  speedJerkDifference = scene.speed_jerk_difference;
+  steer = scene.steer;
+  steeringAngleDeg = scene.steering_angle_deg;
+  turnSignalLeft = scene.turn_signal_left;
+  turnSignalRight = scene.turn_signal_right;
+
+  if (showBlindspot || showFPS || (showJerk && hasLead) || showSignal || showSteering || showTuning) {
+    shouldUpdate = true;
+  }
+
+  if (shouldUpdate) {
     update();
   }
 }
@@ -85,48 +121,43 @@ void OnroadWindow::mousePressEvent(QMouseEvent* e) {
   UIScene &scene = s->scene;
 
   // FrogPilot clickable widgets
+  QPoint pos = e->pos();
+
   QSize size = this->size();
   QRect leftRect(0, 0, size.width() / 2, size.height());
-  QRect rightRect = leftRect.translated(size.width() / 2, 0);
-  bool isLeftSideClicked = leftRect.contains(e->pos()) && scene.speed_limit_changed;
-  bool isRightSideClicked = rightRect.contains(e->pos()) && scene.speed_limit_changed;
+  QRect rightRect(size.width() / 2, 0, size.width() / 2, size.height());
 
   QRect hideSpeedRect(rect().center().x() - 175, 50, 350, 350);
-  bool isSpeedClicked = hideSpeedRect.contains(e->pos()) && scene.hide_speed_ui;
-
   QRect maxSpeedRect(7, 25, 225, 225);
-  bool isMaxSpeedClicked = maxSpeedRect.contains(e->pos()) && scene.reverse_cruise_ui;
-
   QRect speedLimitRect(7, 250, 225, 225);
-  bool isSpeedLimitClicked = speedLimitRect.contains(e->pos()) && scene.show_slc_offset_ui;
 
-  if (isLeftSideClicked || isRightSideClicked) {
-    bool slcConfirmed = isLeftSideClicked && !scene.right_hand_drive || isRightSideClicked && scene.right_hand_drive;
+  if (scene.speed_limit_changed && (leftRect.contains(pos) || rightRect.contains(pos))) {
+    bool slcConfirmed = leftRect.contains(pos) ? !scene.right_hand_drive : scene.right_hand_drive;
     paramsMemory.putBoolNonBlocking("SLCConfirmed", slcConfirmed);
     paramsMemory.putBoolNonBlocking("SLCConfirmedPressed", true);
     return;
   }
 
-  if (isMaxSpeedClicked) {
+  if (maxSpeedRect.contains(pos) && scene.reverse_cruise_ui) {
     scene.reverse_cruise = !scene.reverse_cruise;
     params.putBoolNonBlocking("ReverseCruise", scene.reverse_cruise);
     updateFrogPilotToggles();
     return;
   }
 
-  if (isSpeedClicked) {
+  if (hideSpeedRect.contains(pos) && scene.hide_speed_ui) {
     scene.hide_speed = !scene.hide_speed;
     params.putBoolNonBlocking("HideSpeed", scene.hide_speed);
     return;
   }
 
-  if (isSpeedLimitClicked) {
+  if (speedLimitRect.contains(pos) && scene.show_slc_offset_ui) {
     scene.show_slc_offset = !scene.show_slc_offset;
     params.putBoolNonBlocking("ShowSLCOffset", scene.show_slc_offset);
     return;
   }
 
-  if (scene.experimental_mode_via_screen && e->pos() != timeoutPoint) {
+  if (scene.experimental_mode_via_screen && pos != timeoutPoint) {
     if (clickTimer.isActive()) {
       clickTimer.stop();
 
@@ -134,9 +165,9 @@ void OnroadWindow::mousePressEvent(QMouseEvent* e) {
         int override_value = (scene.conditional_status >= 1 && scene.conditional_status <= 6) ? 0 : (scene.conditional_status >= 7 ? 5 : 6);
         paramsMemory.putIntNonBlocking("CEStatus", override_value);
       } else {
-        bool experimentalMode = params.getBool("ExperimentalMode");
-        params.putBoolNonBlocking("ExperimentalMode", !experimentalMode);
+        params.putBoolNonBlocking("ExperimentalMode", !params.getBool("ExperimentalMode"));
       }
+
     } else {
       clickTimer.start(500);
     }
@@ -201,20 +232,17 @@ void OnroadWindow::primeChanged(bool prime) {
 }
 
 void OnroadWindow::paintEvent(QPaintEvent *event) {
-  UIState *s = uiState();
-  SubMaster &sm = *(s->sm);
-
   QPainter p(this);
 
   // FrogPilot variables
-  const UIScene &scene = s->scene;
-
-  bool needsUpdate = false;
+  UIState *s = uiState();
+  SubMaster &sm = *(s->sm);
 
   QRect rect = this->rect();
-  p.fillRect(rect, QColor(bg.red(), bg.green(), bg.blue(), 255));
+  QColor bgColor(bg.red(), bg.green(), bg.blue(), 255);
+  p.fillRect(rect, bgColor);
 
-  if (scene.show_steering) {
+  if (showSteering) {
     QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
     gradient.setColorAt(0.0, bg_colors[STATUS_TRAFFIC_MODE_ACTIVE]);
     gradient.setColorAt(0.15, bg_colors[STATUS_EXPERIMENTAL_MODE_ACTIVE]);
@@ -225,12 +253,12 @@ void OnroadWindow::paintEvent(QPaintEvent *event) {
     QBrush brush(gradient);
     int fillWidth = UI_BORDER_SIZE;
 
-    steer = 0.10 * std::abs(scene.steer) + 0.90 * steer;
+    steer = 0.10 * std::abs(steer) + 0.90 * steer;
     int visibleHeight = rect.height() * steer;
 
-    QRect rectToFill, rectToHide;
-    if (scene.steering_angle_deg != 0) {
-      if (scene.steering_angle_deg < 0) {
+    if (steeringAngleDeg != 0) {
+      QRect rectToFill, rectToHide;
+      if (steeringAngleDeg < 0) {
         rectToFill = QRect(rect.x(), rect.y() + rect.height() - visibleHeight, fillWidth, visibleHeight);
         rectToHide = QRect(rect.x(), rect.y(), fillWidth, rect.height() - visibleHeight);
       } else {
@@ -238,83 +266,98 @@ void OnroadWindow::paintEvent(QPaintEvent *event) {
         rectToHide = QRect(rect.x() + rect.width() - fillWidth, rect.y(), fillWidth, rect.height() - visibleHeight);
       }
       p.fillRect(rectToFill, brush);
-      p.fillRect(rectToHide, QColor(bg.red(), bg.green(), bg.blue(), 255));
-      needsUpdate = true;
+      p.fillRect(rectToHide, bgColor);
     }
   }
 
-  if (scene.show_signal) {
-    static int signalFrames = 0;
-    QColor signalBorderColor = bg;
+  if (showBlindspot) {
+    QColor blindspotColorLeft = bgColor;
+    QColor blindspotColorRight = bgColor;
 
-    if (scene.turn_signal_left || scene.turn_signal_right) {
-      if (sm.frame % 20 == 0 || signalFrames > 0) {
-        signalBorderColor = bg_colors[STATUS_CONDITIONAL_OVERRIDDEN];
-        signalFrames = (sm.frame % 20 == 0) ? 15 : signalFrames - 1;
-      }
-
-      QRect signalRect;
-      if (scene.turn_signal_left) {
-        signalRect = QRect(rect.x(), rect.y(), rect.width() / 2, rect.height());
-      } else if (scene.turn_signal_right) {
-        signalRect = QRect(rect.x() + rect.width() / 2, rect.y(), rect.width() / 2, rect.height());
-      }
-
-      if (!signalRect.isEmpty()) {
-        p.fillRect(signalRect, signalBorderColor);
-        needsUpdate = true;
-      }
-    } else {
-      signalFrames = 0;
+    if (blindSpotLeft) {
+      blindspotColorLeft = bg_colors[STATUS_TRAFFIC_MODE_ACTIVE];
     }
+
+    if (blindSpotRight) {
+      blindspotColorRight = bg_colors[STATUS_TRAFFIC_MODE_ACTIVE];
+    }
+
+    int xLeft = rect.x();
+    int xRight = rect.x() + rect.width() / 2;
+    QRect blindspotRectLeft(xLeft, rect.y(), rect.width() / 2, rect.height());
+    QRect blindspotRectRight(xRight, rect.y(), rect.width() / 2, rect.height());
+
+    p.fillRect(blindspotRectLeft, blindspotColorLeft);
+    p.fillRect(blindspotRectRight, blindspotColorRight);
   }
 
-  if (scene.show_blind_spot) {
-    static int blindspotFramesLeft = 0;
-    static int blindspotFramesRight = 0;
+  if (showSignal) {
+    static int signalFramesLeft = 0;
+    static int signalFramesRight = 0;
 
-    auto getBlindspotColor = [&](bool turnSignal, int &frames) {
-      if (turnSignal && sm.frame % 10 == 0) {
-        frames = 5;
-      }
-      return (frames-- > 0) ? bg_colors[STATUS_TRAFFIC_MODE_ACTIVE] : bg;
-    };
+    bool blindSpotActive = (blindSpotLeft && turnSignalLeft) || (blindSpotRight && turnSignalRight);
+    bool turnSignalActive = (turnSignalLeft && signalFramesLeft > 0) || (turnSignalRight && signalFramesRight > 0);
 
-    QRect blindspotRect;
-    if (scene.blind_spot_left) {
-      blindspotRect = QRect(rect.x(), rect.y(), rect.width() / 2, rect.height());
-      p.fillRect(blindspotRect, getBlindspotColor(scene.turn_signal_left, blindspotFramesLeft));
-      needsUpdate = true;
-    } else {
-      blindspotFramesLeft = 0;
+    QColor signalBorderColorLeft = bg;
+    QColor signalBorderColorRight = bg;
+
+    if (blindSpotLeft) {
+      signalBorderColorLeft = bg_colors[STATUS_TRAFFIC_MODE_ACTIVE];
     }
 
-    if (scene.blind_spot_right) {
-      blindspotRect = QRect(rect.x() + rect.width() / 2, rect.y(), rect.width() / 2, rect.height());
-      p.fillRect(blindspotRect, getBlindspotColor(scene.turn_signal_right, blindspotFramesRight));
-      needsUpdate = true;
-    } else {
-      blindspotFramesRight = 0;
+    if (blindSpotRight) {
+      signalBorderColorRight = bg_colors[STATUS_TRAFFIC_MODE_ACTIVE];
+    }
+
+    if (sm.frame % 20 == 0 || blindSpotActive || turnSignalActive) {
+      QColor activeColor = bg_colors[STATUS_CONDITIONAL_OVERRIDDEN];
+
+      if (turnSignalLeft) {
+        signalFramesLeft = sm.frame % 10 == 0 && blindSpotActive ? 5 : sm.frame % 20 == 0 ? 10 : signalFramesLeft - 1;
+        if (signalFramesLeft > 0) {
+          signalBorderColorLeft = activeColor;
+        }
+      }
+
+      if (turnSignalRight) {
+        signalFramesRight = sm.frame % 10 == 0 && blindSpotActive ? 5 : sm.frame % 20 == 0 ? 10 : signalFramesRight - 1;
+        if (signalFramesRight > 0) {
+          signalBorderColorRight = activeColor;
+        }
+      }
+    }
+
+    int xLeft = rect.x();
+    int xRight = rect.x() + rect.width() / 2;
+    QRect signalRectLeft(xLeft, rect.y(), rect.width() / 2, rect.height());
+    QRect signalRectRight(xRight, rect.y(), rect.width() / 2, rect.height());
+
+    if (turnSignalLeft) {
+      p.fillRect(signalRectLeft, signalBorderColorLeft);
+    }
+
+    if (turnSignalRight) {
+      p.fillRect(signalRectRight, signalBorderColorRight);
     }
   }
 
   QString logicsDisplayString;
-  auto appendJerkInfo = [&](const QString &label, double value, double difference) {
+  auto appendJerkInfo = [&](const QString &label, float value, float difference) {
     logicsDisplayString += QString("%1: %2").arg(label).arg(value, 0, 'f', 3);
     if (difference != 0) {
-      logicsDisplayString += QString(" (%1%2)").arg(difference > 0 ? "-" : "", 0).arg(difference, 0, 'f', 3);
+      logicsDisplayString += QString(" (%1%2)").arg(difference > 0 ? "-" : "").arg(difference, 0, 'f', 3);
     }
     logicsDisplayString += " | ";
   };
 
-  if (scene.show_jerk) {
-    appendJerkInfo("Acceleration Jerk", scene.acceleration_jerk, scene.acceleration_jerk_difference);
-    appendJerkInfo("Speed Jerk", scene.speed_jerk, scene.speed_jerk_difference);
+  if (showJerk) {
+    appendJerkInfo("Acceleration Jerk", accelerationJerk, accelerationJerkDifference);
+    appendJerkInfo("Speed Jerk", speedJerk, speedJerkDifference);
   }
 
-  if (scene.show_tuning) {
-    logicsDisplayString += scene.live_valid
-        ? QString("Friction: %1 | Lateral Acceleration: %2").arg(scene.friction, 0, 'f', 3).arg(scene.lat_accel, 0, 'f', 3)
+  if (showTuning) {
+    logicsDisplayString += liveValid
+        ? QString("Friction: %1 | Lateral Acceleration: %2").arg(friction, 0, 'f', 3).arg(latAccel, 0, 'f', 3)
         : "Friction: Calculating... | Lateral Acceleration: Calculating...";
   }
 
@@ -356,20 +399,17 @@ void OnroadWindow::paintEvent(QPaintEvent *event) {
 
         p.drawText(currentX, logicsY, text);
         currentX += p.fontMetrics().horizontalAdvance(text + " ");
-        needsUpdate = true;
       }
     }
   }
 
-  if (scene.fps_counter) {
-    double fps = scene.fps;
-
+  if (showFPS) {
     qint64 currentMillis = QDateTime::currentMSecsSinceEpoch();
-    static std::queue<std::pair<qint64, double>> fpsQueue;
+    static std::queue<std::pair<qint64, float>> fpsQueue;
 
-    static double avgFPS = 0.0;
-    static double maxFPS = 0.0;
-    static double minFPS = 99.9;
+    static float avgFPS = 0.0;
+    static float maxFPS = 0.0;
+    static float minFPS = 99.9;
 
     minFPS = std::min(minFPS, fps);
     maxFPS = std::max(maxFPS, fps);
@@ -381,7 +421,7 @@ void OnroadWindow::paintEvent(QPaintEvent *event) {
     }
 
     if (!fpsQueue.empty()) {
-      double totalFPS = 0.0;
+      float totalFPS = 0.0;
       for (auto tempQueue = fpsQueue; !tempQueue.empty(); tempQueue.pop()) {
         totalFPS += tempQueue.front().second;
       }
@@ -404,10 +444,5 @@ void OnroadWindow::paintEvent(QPaintEvent *event) {
     int yPos = rect.bottom() - 5;
 
     p.drawText(xPos, yPos, fpsDisplayString);
-    needsUpdate = true;
-  }
-
-  if (needsUpdate) {
-    update();
   }
 }

@@ -185,31 +185,29 @@ void DistanceButton::buttonReleased() {
 }
 
 void DistanceButton::updateState(const UIScene &scene) {
-  bool stateChanged = (trafficModeActive != scene.traffic_mode_active) ||
-                      (personality != static_cast<int>(scene.personality) && !trafficModeActive);
-
-  if (stateChanged) {
-    transitionTimer.restart();
+  if ((trafficModeActive == scene.traffic_mode_active) &&
+      (personality == static_cast<int>(scene.personality) || trafficModeActive)) {
+    return;
   }
 
-  if (transitionTimer.isValid()) {
-    elapsed = transitionTimer.elapsed();
-    personality = static_cast<int>(scene.personality);
-    trafficModeActive = scene.traffic_mode_active;
+  personality = static_cast<int>(scene.personality);
+  trafficModeActive = scene.traffic_mode_active;
 
-    int profile = trafficModeActive ? 0 : personality + 1;
-    std::tie(profileImage, profileText) = (scene.use_kaofui_icons ? profileDataKaofui : profileData)[profile];
+  int profile = trafficModeActive ? 0 : personality + 1;
+  std::tie(profileImage, profileText) = (scene.use_kaofui_icons ? profileDataKaofui : profileData)[profile];
 
-    update();
-  }
+  transitionTimer.restart();
+
+  update();
 }
 
 void DistanceButton::paintEvent(QPaintEvent *event) {
   QPainter p(this);
   p.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
 
+  elapsed = transitionTimer.elapsed();
   qreal textOpacity = qBound(0.0, 1.0 - ((elapsed - 3000.0) / 1000.0), 1.0);
-  qreal imageOpacity = qBound(0.0, 1.0 - textOpacity, 1.0);
+  qreal imageOpacity = 1.0 - textOpacity;
 
   if (textOpacity > 0.0) {
     p.setOpacity(textOpacity);
