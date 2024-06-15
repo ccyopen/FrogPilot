@@ -141,6 +141,15 @@ class CarInterface(CarInterfaceBase):
       tune.kiV = [0.5]
       ret.stopAccel = -2.5             # on stock Toyota this is -2.5
       ret.stoppingDecelRate = 0.17
+    elif (candidate in TSS2_CAR or ret.enableGasInterceptor) and params.get_bool("DragonPilotTune"):
+      # Credit goes to the DragonPilot team!
+      tune.kpV = [0.0]
+      tune.kiV = [0.5]
+      if candidate in TSS2_CAR:
+        ret.vEgoStopping = 0.1         # car is near 0.1 to 0.2 when car starts requesting stopping accel
+        ret.vEgoStarting = 0.1         # needs to be > or == vEgoStopping
+        ret.stopAccel = -0.40          # Toyota requests -0.4 when stopped
+        ret.stoppingDecelRate = 0.5    # reach stopping target smoothly
     elif candidate in TSS2_CAR or ret.enableGasInterceptor:
       tune.kpV = [0.0]
       tune.kiV = [0.5]
