@@ -85,6 +85,8 @@ class FrogPilotPlanner:
     else:
       self.lead_one = radarState.leadOne
 
+    driving_gear = carState.gearShifter not in (GearShifter.neutral, GearShifter.park, GearShifter.reverse, GearShifter.unknown)
+
     v_cruise_kph = min(controlsState.vCruise, V_CRUISE_UNSET)
     v_cruise = v_cruise_kph * CV.KPH_TO_MS
     v_cruise_changed = (self.mtsc_target or self.vtsc_target) < v_cruise
@@ -144,7 +146,7 @@ class FrogPilotPlanner:
       self.t_follow = get_T_FOLLOW(frogpilot_toggles.custom_personalities, frogpilot_toggles.aggressive_follow,
                                    frogpilot_toggles.standard_follow, frogpilot_toggles.relaxed_follow, controlsState.personality)
 
-    if self.lead_one.status:
+    if self.lead_one.status and driving_gear:
       self.safe_obstacle_distance_stock = int(get_safe_obstacle_distance(v_ego, self.t_follow))
       self.update_follow_values(lead_distance, stopping_distance, v_ego, v_lead, frogpilot_toggles)
       self.safe_obstacle_distance = int(get_safe_obstacle_distance(v_ego, self.t_follow))
@@ -164,17 +166,19 @@ class FrogPilotPlanner:
       self.lane_width_left = 0
       self.lane_width_right = 0
 
-    if frogpilot_toggles.lead_departing_alert and self.frame % 0.5 and carState.standstill and self.lead_one.status:
+    if frogpilot_toggles.lead_departing_alert and carState.standstill and self.lead_one.status:
       if self.previous_lead_angle == 0:
         self.previous_lead_angle = self.lead_one.yRel
 
-      self.lead_departing = lead_distance - self.previous_lead_distance > 0.5
+      self.lead_departing = lead_distance - self.previous_lead_distance > 0
       self.previous_lead_distance = lead_distance
 
       self.lead_departing &= not carState.gasPressed
+      self.lead_departing &= driving_gear
       self.lead_departing &= v_lead > 1
-      self.lead_departing &= abs(self.lead_one.yRel - self.previous_lead_angle) < 1
+      #self.lead_departing &= abs(self.lead_one.yRel - self.previous_lead_angle) < 1
     elif not (carState.standstill or self.lead_one.status):
+      self.lead_departing = False
       self.previous_lead_angle = 0
 
     self.road_curvature = calculate_road_curvature(modelData, v_ego)
