@@ -156,6 +156,9 @@ class CarState(CarStateBase):
     # FrogPilot CarState functions
     fp_ret.brakeLights = bool(pt_cp.vl["ESP_05"]['ESP_Status_Bremsdruck'])
 
+    self.prev_distance_button = self.distance_button
+    self.distance_button = bool(pt_cp.vl["GRA_ACC_01"]["GRA_Verstellung_Zeitluecke"])
+
     self.frame += 1
 
     return ret, fp_ret
@@ -259,6 +262,9 @@ class CarState(CarStateBase):
 
     # FrogPilot CarState functions
     fp_ret.brakeLights = bool(pt_cp.vl["Motor_2"]['Bremstestschalter'])
+
+    self.prev_distance_button = self.distance_button
+    self.distance_button = bool(pt_cp.vl["GRA_Neu"]["GRA_Zeitluecke"])
 
     self.frame += 1
 
