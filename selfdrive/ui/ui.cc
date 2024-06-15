@@ -512,7 +512,9 @@ void UIState::update() {
 
   // Update FrogPilot parameters
   if (paramsMemory.getBool("FrogPilotTogglesUpdated")) {
-    ui_update_frogpilot_params(this);
+    std::thread([this]() {
+      ui_update_frogpilot_params(this);
+    }).detach();
   }
 
   // FrogPilot variables that need to be constantly updated
