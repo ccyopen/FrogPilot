@@ -237,7 +237,7 @@ static void update_state(UIState *s) {
     scene.blind_spot_right = carState.getRightBlindspot();
     scene.parked = carState.getGearShifter() == cereal::CarState::GearShifter::PARK;
     scene.reverse = carState.getGearShifter() == cereal::CarState::GearShifter::REVERSE;
-    scene.standstill = carState.getStandstill();
+    scene.standstill = carState.getStandstill() && !scene.reverse;
     scene.steering_angle_deg = -carState.getSteeringAngleDeg();
     scene.turn_signal_left = carState.getLeftBlinker();
     scene.turn_signal_right = carState.getRightBlinker();
@@ -520,6 +520,7 @@ void UIState::update() {
   scene.current_holiday_theme = scene.holiday_themes ? paramsMemory.getInt("CurrentHolidayTheme") : 0;
   scene.current_random_event = scene.random_events ? paramsMemory.getInt("CurrentRandomEvent") : 0;
   scene.driver_camera_timer = scene.driver_camera && scene.reverse ? scene.driver_camera_timer + 1 : 0;
+  scene.started_timer = scene.started ? scene.started_timer + 1 : 0;
 }
 
 void UIState::setPrimeType(PrimeType type) {

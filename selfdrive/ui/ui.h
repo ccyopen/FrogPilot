@@ -248,6 +248,7 @@ typedef struct UIScene {
   int screen_brightness_onroad;
   int screen_timeout;
   int screen_timeout_onroad;
+  int started_timer;
   int steering_angle_deg;
   int stopped_equivalence;
   int tethering_config;
