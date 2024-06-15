@@ -259,6 +259,11 @@ void ui_update_params(UIState *s) {
 void ui_update_frogpilot_params(UIState *s) {
   Params params = Params();
   UIScene &scene = s->scene;
+
+  scene.tethering_config = params.getInt("TetheringEnabled");
+  if (scene.tethering_config == 2) {
+    WifiManager(s).setTetheringEnabled(true);
+  }
 }
 
 void UIState::updateStatus() {
@@ -282,6 +287,9 @@ void UIState::updateStatus() {
     started_prev = scene.started;
     scene.world_objects_visible = false;
     emit offroadTransition(!scene.started);
+    if (scene.tethering_config == 1) {
+      wifi->setTetheringEnabled(scene.started);
+    }
   }
 }
 
@@ -305,6 +313,8 @@ UIState::UIState(QObject *parent) : QObject(parent) {
   timer = new QTimer(this);
   QObject::connect(timer, &QTimer::timeout, this, &UIState::update);
   timer->start(1000 / UI_FREQ);
+
+  wifi = new WifiManager(this);
 
   ui_update_frogpilot_params(this);
 }
