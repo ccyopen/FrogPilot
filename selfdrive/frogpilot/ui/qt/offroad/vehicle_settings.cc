@@ -60,6 +60,8 @@ QStringList getCarNames(const QString &carMake, QMap<QString, QString> &carModel
     while (carModelIt.hasNext()) {
       QRegularExpressionMatch carModelMatch = carModelIt.next();
       QString platform = carModelMatch.captured(1);
+      int carModelStart = carModelMatch.capturedStart();
+      int carModelEnd = carModelMatch.capturedEnd();
 
       auto processMatches = [&](QRegularExpressionMatchIterator &it) {
         while (it.hasNext()) {
@@ -75,10 +77,11 @@ QStringList getCarNames(const QString &carMake, QMap<QString, QString> &carModel
         }
       };
 
-      QRegularExpressionMatchIterator carDocsIt = carDocsRegex.globalMatch(fileContent, carModelMatch.capturedEnd());
+      QString platformSection = fileContent.mid(carModelStart, carModelEnd - carModelStart);
+      QRegularExpressionMatchIterator carDocsIt = carDocsRegex.globalMatch(platformSection);
       processMatches(carDocsIt);
 
-      QRegularExpressionMatchIterator footnoteIt = footnoteRegex.globalMatch(fileContent, carModelMatch.capturedEnd());
+      QRegularExpressionMatchIterator footnoteIt = footnoteRegex.globalMatch(platformSection);
       processMatches(footnoteIt);
     }
   }
